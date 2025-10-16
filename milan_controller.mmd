@@ -1,0 +1,38 @@
+flowchart TD
+  A([Start SR Change Request]) --> B[Prepare: Identify affected streams - Talkers and Listeners<br>Gather capability flags<br>Compute target sample rate and target format policy]
+  B --> C[LOCK ALL Talkers and Listeners]
+  C -->|all locked| D[STOP all Listeners]
+  D --> E[STOP all Talkers]
+  E -->|all stopped| F[SET SR for all entities]
+
+  F --> G{All SR SET acknowledged}
+  G -->|yes| H[MSRP RELEASE old reservations<br>after Talker SR SET]
+  G -->|no or timeout| X[Endpoint Failure]
+
+  H --> I[SET FMT for all required entities]
+  I --> J{All FMT SET acknowledged}
+  J -->|yes| K[START all Talkers]
+  J -->|no or timeout| X
+
+  K --> L[MSRP RESERVE new reservations<br>after each Talker STARTED]
+  L --> M{All MSRP RESERVED acknowledged}
+  M -->|yes| N[START all Listeners]
+  M -->|no| Y[Reservation Failure]
+
+  N --> O{All Listeners STARTED}
+  O -->|yes| P[UNLOCK ALL Talkers and Listeners]
+  O -->|no or timeout| X
+
+  P --> Q([Done: SR Format and Reservations at target])
+
+  X[[Endpoint Failure]]
+  X --> XA{Policy}
+  XA -->|Rollback| R1[Rollback: STOP all, restore old SR and format, re reserve old, START Talkers then Listeners, UNLOCK]
+  XA -->|Retry| R2[Retry with backoff bounded]
+  XA -->|Degrade| R3[Exclude failing endpoints and continue]
+
+  Y[[Reservation Failure]]
+  Y --> YA{Policy}
+  YA -->|Rollback| R1
+  YA -->|Hold and Retry| R2
+  YA -->|Best effort| R3
